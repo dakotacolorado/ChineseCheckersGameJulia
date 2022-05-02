@@ -1,217 +1,453 @@
 using DataStructures
 using LinearAlgebra
+using StaticArrays
 using JLD
 using Distributed
 using CUDA
 
-CUDA.allowscalar(false)
-
-# gpu tests
-@time dot(CUDA.rand(Int8,999999999), CUDA.rand(Int8,999999999))
-@time dot(rand(Int8,2999999999), rand(Int8,2999999999))
-CUDA.memory_status()  
-CUDA.reclaim()    
-
+CUDA.allowscalar(false) 
 
 # point : pᵢ ∈ [0,9]
-is_point_in_bounds(pᵢ :: Int8) = (pᵢ ≥ Int8(1)) & (pᵢ ≤ Int8(9))
+is_point_in_bounds(point :: Int8) = (point ≥ Int8(1)) & (point ≤ Int8(9))
 
 # unit tests : pᵢ
 is_point_in_bounds(Int8(-10)) == false
 is_point_in_bounds(Int8(5)) == true
 is_point_in_bounds(Int8(10)) == false
 
-struct Position 
-    p₁ :: Int8
-    p₂ :: Int8
-end
-
 # position : p ∈ [0,9]²
-is_position_in_bounds(p :: Position) = is_point_in_bounds(p.p₁) & is_point_in_bounds(p.p₂)
+function is_position_in_bounds(position :: SVector{2, Int8}) 
+    return is_point_in_bounds(position[1]) & is_point_in_bounds(position[2])
+end
 
 # unit tests : p
-is_position_in_bounds(Position(-1, -1)) == false
-is_position_in_bounds(Position(3, 0)) == false
-is_position_in_bounds(Position(1, 1)) == true
-is_position_in_bounds(Position(10, 10)) == false
+is_position_in_bounds(SVector(Int8(-1), Int8(-1))) == false
+is_position_in_bounds(SVector(Int8( 3), Int8( 0))) == false
+is_position_in_bounds(SVector(Int8( 1), Int8( 1))) == true
+is_position_in_bounds(SVector(Int8(10), Int8(10))) == false
 
 # diagonal projection : p₁ + p₂
-diagonal_projection(p :: Position) = p.p₁ + p.p₂ 
+diagonal_projection(position :: SVector{2, Int8}) = position[1] + position[2] 
 
 # unit tests : diagonal_projection(p)
-diagonal_projection(Position(0, 0))  ==  0
-diagonal_projection(Position(2, 2))  ==  4
-diagonal_projection(Position(-2,-2)) == -4
+diagonal_projection(SVector(Int8( 0), Int8( 0)))  ==  0
+diagonal_projection(SVector(Int8( 2), Int8( 2)))  ==  4
+diagonal_projection(SVector(Int8(-2), Int8(-2)))  == -4
 
 # perpendicular projection : Φ(p) = p₁ - p₂
-perpendicular_projection(p :: Position) = p.p₁ - p.p₂ 
+perpendicular_projection(position :: SVector{2, Int8}) = position[1] - position[2] 
 
 # unit tests : perpendicular_projection(p)
-perpendicular_projection(Position(0,0)) ==  0
-perpendicular_projection(Position(2,2)) ==  0
-perpendicular_projection(Position(2,3)) == -1
-perpendicular_projection(Position(3,2)) ==  1
-
-struct Move 
-    m₁ :: Int8
-    m₂ :: Int8
-end
+perpendicular_projection(SVector(Int8(0),Int8(0))) ==  0
+perpendicular_projection(SVector(Int8(2),Int8(2))) ==  0
+perpendicular_projection(SVector(Int8(2),Int8(3))) == -1
+perpendicular_projection(SVector(Int8(3),Int8(2))) ==  1
 
 # unit moves : Ω = {(m₁, m₂) | mᵢ ∈ {-1, 0, 1}, m₁ + m₂ ≤ 2}
-Ω = map(m -> Move(m[1], m[2]),[ 
-    [1 0], [-1 0], [0 1], [0 -1], [-1 1], [1 -1]
-])
+Ω = SVector{6}(map(
+    m -> SVector{2}(Int8(m[1]), Int8(m[2])),
+    [ 
+        [1 0], [-1 0], [0 1], [0 -1], [-1 1], [1 -1]
+    ]
+))
 
 # unit test : Ω 
-filter(ω -> (ω.m₁ + ω.m₂ < 5) & (ω.m₁ + ω.m₂ > 1), Ω) == []
+filter(ω -> (ω[1] + ω[2] < 5) & (ω[1] + ω[2] > 1), Ω) == []
 
 # start positions : P₀ = {(p₁, p₂) | pᵢ ∈ [1, 9], p₁ + p₂ ≤ 5}
-P₀ = CuArray(map(p -> Position(p[1], p[2]),[ 
-    [1 1], [1 2], [2 1], [3 1], [2 2],
-    [1 3], [4 1], [3 2], [2 3], [1 4]
-]))
-
-# active positions : Q₀
-Q₀ = copy(P₀)
+P₀ =  SVector{10}(map(
+    p -> SVector{2}(Int8(p[1]), Int8(p[2])),
+    [ 
+        [1 1], [1 2], [2 1], [3 1], [2 2],
+        [1 3], [4 1], [3 2], [2 3], [1 4]
+    ]
+))
 
 # unit tests : P₀
 filter(is_position_in_bounds, P₀) == P₀ 
-filter(p -> p.p₁ + p.p₂ > 5, P₀) == []
+filter(p -> p[1] + p[2] > 5, P₀) == []
 
 # target positions : P₁ = {(p₁, p₂) | pᵢ ∈ [1, 9], p₁ + p₂ ≥ 13}
-P₁ = map(p -> Position(10 - p.p₁, 10 - p.p₂), P₀)
-
-# other positions : Q₁
-Q₁ = copy(P₁)
+P₁ = map(p -> SVector{2}(Int8(10 - p[1]), Int8(10 - p[2])), P₀)
 
 # unit tests : P₁
 filter(is_position_in_bounds, P₁) == P₁ 
-filter(p ->  p.p₁ + p.p₂ < 12, P₁) == []
-
-vcat(Q₀, Q₁)
+filter(p ->  p[1] + p[2] < 12, P₁) == []
 
 # is position open : p ∉ P₀ ∪ P₁
-is_position_open(p :: Position) = ~ mapreduce(q -> q == p, |, vcat(Q₀, Q₁))
-Position(1,1) == Position(1,1)
+function is_position_open(
+    position :: SVector{2, Int8}, 
+    Positions :: SVector{20, SVector{2, Int8}}
+    ) 
+    return  ~ mapreduce(q -> q == position, |, Positions)
+end
+
 # unit tests : is_position_open
-is_position_open(Position(1, 1)) == false
-is_position_open(Position(3, 1)) == false
-is_position_open(Position(3, 2)) == false
-is_position_open(Position(4, 4)) == true
-is_position_open(Position(5, 1)) == true
+P = vcat(P₀, P₁)
+is_position_open(SVector(Int8(1), Int8(1)), P) == false
+is_position_open(SVector(Int8(3), Int8(1)), P) == false
+is_position_open(SVector(Int8(3), Int8(2)), P) == false
+is_position_open(SVector(Int8(4), Int8(4)), P) == true
+is_position_open(SVector(Int8(5), Int8(1)), P) == true
 
 
 # move : m ∈ [0,9]² 
 # direction : d ∈ {-1, 1}
-# is move forward : (m₁ + m₂) ⋅ d ≥ 0
-is_move_forward(m :: Array{Int8}, d :: Int8) = diagonal_projection(m) ⋅ d ≥ 0
-
-# unit tests
-is_move_forward(map(Int8, [ 1  1]), Int8(1) ) == true
-is_move_forward(map(Int8, [-1  1]), Int8(1))  == true
-is_move_forward(map(Int8, [-1 -1]), Int8(1))  == false
-is_move_forward(map(Int8, [-1 -1]), Int8(-1)) == true
-is_move_forward(map(Int8, [-1 1]), Int8(-1))  == true
-is_move_forward(map(Int8, [-1  -1]), Int8(1)) == false
-is_move_forward(map(Int8, [0  0]), Int8(1))   == true
-
-# start unit moves : Ω₀ = {ω | ω ∈  Ω, is_move_forward(ω, 1)}
-Ω₀ = filter(m -> is_move_forward(m, Int8(1)), unit_moves)
-
-# target unit moves : Ω₁ = {ω | ω ∈  Ω, is_move_forward(ω, -1)}
-Ω₁ = filter(m -> is_move_forward(m, Int8(-1)), unit_moves)
-
-# position : p ∈ [0,9]² 
-# is position valid : (p ∈ [0,9]²) & (p ∉ P₀ ∪ P₁) 
-is_position_valid(r :: Array{Int8}) = is_position_in_bounds(r) & is_position_open(r)
-
-
-# position : p ∈ [0,9]² 
-# direction : d ∈ {-1, 1}
-get_unit_moves(r :: Array{Int8}, d :: Int8) = filter(m -> is_position_valid(r + m), d == 1 ? Ω₀ : Ω₁)
-
-
-# unit test
-get_unit_moves(map(Int8, [1 1]), Int8(1)) == []
-get_unit_moves(map(Int8, [2 2]), Int8(1)) == []
-get_unit_moves(map(Int8, [3 2]), Int8(1)) == [[1 0], [0 1]]
-
-# position : p ∈ [0,9]² 
-# move : m ∈ [0,9]²  
-is_double_move_open(r :: Array{Int8}, m :: Array{Int8}) = (~is_position_open(r + m)) & is_position_valid(map(Int8, r + 2*m))
-
-# unit tests
-is_double_move_open(map(Int8, [1 1]), map(Int8, [1 0])) == false
-is_double_move_open(map(Int8, [3 1]), map(Int8, [1 0])) == true
-
-
-# position : p ∈ [0,9]² 
-# direction : d ∈ {-1, 1}
-function get_double_moves(r :: Array{Int8}, d :: Int8) 
-    visited_moves = Set()
-    moves_queue   = [map(Int8, [0 0])]
-    while length(moves_queue) > 0
-        moves = map( m -> map( n -> map(Int8,2*n), filter( u -> is_double_move_open(r + m, u), Ω) ), moves_queue)
-        moves = filter(m -> is_move_forward(m, d), collect(Iterators.flatten(moves)))
-        moves_queue = setdiff(moves, visited_moves)
-        visited_moves = union(visited_moves, moves)
-        break
-    end
-    return collect(visited_moves) 
+# is move forward : (v₁ + v₂) ⋅ d ≥ 0
+function is_move_forward(
+    move :: SVector{2, Int8}, 
+    direction :: Int8
+    ) 
+    return diagonal_projection(move) ⋅ direction ≥ 0
 end
 
 # unit tests
-get_double_moves(map(Int8, [3 1]), Int8(1)) == [[2 0], [0 2]]
-get_double_moves(map(Int8, [1 3]), Int8(1)) == [[2 0], [0 2]]
+is_move_forward(SVector(Int8( 1), Int8( 1)), Int8(1) ) == true
+is_move_forward(SVector(Int8(-1), Int8( 1)), Int8(1))  == true
+is_move_forward(SVector(Int8(-1), Int8(-1)), Int8(1))  == false
+is_move_forward(SVector(Int8(-1), Int8(-1)), Int8(-1)) == true
+is_move_forward(SVector(Int8(-1), Int8( 1)), Int8(-1))  == true
+is_move_forward(SVector(Int8(-1), Int8(-1)), Int8(1)) == false
+is_move_forward(SVector(Int8(0 ), Int8( 0)), Int8(1))   == true
+
+# start unit moves : Ω₀ = {ω | ω ∈  Ω, is_move_forward(ω, 1)}
+Ω₀ = filter(m -> is_move_forward(m, Int8(1)), Ω)
+
+# target unit moves : Ω₁ = {ω | ω ∈  Ω, is_move_forward(ω, -1)}
+Ω₁ = filter(m -> is_move_forward(m, Int8(-1)), Ω)
+
+# position : p ∈ [0,9]² 
+# is position valid : (p ∈ [0,9]²) & (p ∉ P₀ ∪ P₁) 
+function is_position_valid(
+    position ::SVector{2, Int8}, 
+    Positions :: SVector{20, SVector{2, Int8}}
+    ) 
+    is_valid =  is_position_in_bounds(position)
+    is_valid &= is_position_open(position, Positions)
+    return is_valid
+end
+
+# position : p ∈ [0,9]² 
+# direction : d ∈ {-1, 1}
+function get_unit_moves(
+    position :: SVector{2, Int8}, 
+    direction :: Int8, 
+    Positions :: SVector{20, SVector{2, Int8}}
+    ) 
+    return filter(
+        move -> is_position_valid(position + move, Positions), 
+        direction == 1 ? Ω₀ : Ω₁
+    )
+end
+
+# unit test
+function remove_empty_positions(
+    Positions :: SVector{4, SVector{2, Int8}}
+    ) 
+    return filter(
+        position -> position != SVector{2}(Int8(0), Int8(0)), 
+        Positions
+    )
+end
+
+get_unit_moves(SVector(Int8(1), Int8(1)), Int8(1), P)== []
+get_unit_moves(SVector(Int8(2), Int8(2)), Int8(1), P) == []
+get_unit_moves(SVector(Int8(3), Int8(2)), Int8(1), P) ==  [SVector(1, 0), SVector(0, 1)]
+
+# position : p ∈ [0,9]² 
+# move : m ∈ [0,9]²  
+function is_double_move_open(
+    position :: SVector{2, Int8}, 
+    move :: SVector{2, Int8}, 
+    Positions :: SVector{20, SVector{2, Int8}}
+    ) 
+    is_open = ~is_position_open(position + move, Positions)
+    is_open &= is_position_valid(map(Int8, position + 2*move), Positions)
+    return is_open
+end
+
+# unit tests
+is_double_move_open(SVector(Int8(1), Int8(1)), SVector(Int8(1), Int8(0)), P) == false
+is_double_move_open(SVector(Int8(3), Int8(1)), SVector(Int8(1), Int8(0)), P) == true
+
+# position : p ∈ [0,9]² 
+# direction : d ∈ {-1, 1}
+function get_double_moves(
+    position :: SVector{2, Int8}, 
+    direction :: Int8, 
+    Positions :: SVector{20, SVector{2, Int8}}
+    ) 
+    visited_moves = Set{SVector{2, Int8}}()
+    moves_queue   = Array{SVector{2, Int8}}([SVector(Int8(0), Int8(0))])
+    while length(moves_queue) > 0
+        moves = map( 
+            move -> map( 
+                n -> map(Int8,2*n), 
+                filter( 
+                    ω -> is_double_move_open(
+                        position + move, 
+                        ω,
+                        Positions
+                    ), 
+                    Ω
+                ) 
+            ), 
+            moves_queue
+        )
+        moves = filter(
+            move -> is_move_forward(move, direction), 
+            collect(
+                Iterators.flatten(
+                    moves
+                )
+            )
+        )
+        moves_queue = setdiff(moves, visited_moves)
+        visited_moves = union(visited_moves, moves)
+    end
+    
+    return collect(visited_moves)
+end
+
+
+# unit tests
+Array(get_double_moves(SVector(Int8(3), Int8(1)), Int8(1), P)) == [SVector(2, 0), SVector(0, 2)]
+Array(get_double_moves(SVector(Int8(1), Int8(3)), Int8(1), P)) == [SVector(2, 0), SVector(0, 2)]
 
 # positions : P ∈ [0,9]²ˣ¹⁰
 # index : i ∈ Ζ
 # position : p ∈ [0,9]² 
-function replace_position(R :: Array{Matrix{Int8}}, i :: Int8, r :: Array{Int8})
-    S = copy(R)
-    S[i] = R
-    return S
+function replace_position(
+    Positions :: SVector{10, SVector{2, Int8}}, 
+    index :: Int8, 
+    new_position :: SVector{2, Int8}
+    )
+    return SVector{10}(map(
+        ((j, position), ) -> j == index ? new_position : position, 
+        enumerate(Positions)
+    ))
 end
 
 # unit test
-replace_position(P₀, Int8(4), map(Int8, [2 4])) == map(p -> map(Int8, p), [
-    [1 1], [1 2], [2 1], [2 4], [2 2], [1 3], [4 1],
-    [3 2], [2 3], [1 4]
-])
+replace_position(P₀, Int8(4), SVector(Int8(2), Int8(4))) == SVector{10}(map(
+    p -> SVector{2}(Int8(p[1]), Int8(p[2])), 
+    [
+        [1 1], [1 2], [2 1], [2 4], [2 2], 
+        [1 3], [4 1], [3 2], [2 3], [1 4]
+    ]
+))
 
 
-# active positions : Q ∈ [0,9]²ˣ¹⁰
+# active positions : R ∈ [0,9]²ˣ¹⁰
 # direction : d ∈ {-1, 1}
-function get_next_positions(R :: Vector{Matrix{Int8}}, d :: Int8)
+function get_next_positions(
+    active_Positions :: SVector{10, SVector{2, Int8}}, 
+    direction :: Int8,
+    Positions :: SVector{20, SVector{2, Int8}}
+    )
     return collect(
         Iterators.flatten(
             map(
-                ((i, r), ) -> map(
-                    m -> replace_position(R, Int8(i), r + m), 
+                ((i, position), ) -> map(
+                    move -> replace_position(active_Positions, Int8(i), position + move), 
                     vcat(
-                        get_unit_moves(r, d), 
-                        get_double_moves(r, d))
+                        get_unit_moves(position, direction, Positions), 
+                        get_double_moves(position, direction, Positions))
                     ), 
-                enumerate(R)
+                enumerate(active_Positions)
             )
         )
     )
 end
 
 # unit tests 
-length(get_next_positions(P₀, Int8(1)))  == 14
-length(get_next_positions(P₁, Int8(-1))) == 14
+length(get_next_positions(P₀, Int8(1), P))  == 14
+length(get_next_positions(P₁, Int8(-1), P)) == 14
 
 # active positions : R₀ ∈ [0,9]²ˣ¹⁰
 # other positions : R₁ ∈ [0,9]²ˣ¹⁰
 # direction : d ∈ {-1, 1}
-function get_position_transitions(R₀ :: Array{Matrix{Int8}}, R₁ :: Array{Matrix{Int8}}, d :: Int8)
-    return Array([R₀, R₁, get_next_positions(R₀, d)])
+function get_position_transitions(
+    active_Positions :: SVector{10, SVector{2, Int8}}, 
+    other_Positions :: SVector{10, SVector{2, Int8}}, 
+    direction :: Int8
+    )
+    next_positions = get_next_positions(
+        active_Positions, 
+        direction, 
+        vcat(
+            active_Positions, 
+            other_Positions
+        )
+    )
+    return SVector(
+        active_Positions, 
+        other_Positions, 
+        next_positions
+    )
 end
 
 # unit tests
+get_position_transitions(P₀, P₁, Int8(1))[1] == P₀
+get_position_transitions(P₀, P₁, Int8(1))[2] == P₁
 length(get_position_transitions(P₀, P₁, Int8(1))[3]) == 14
 length(get_position_transitions(P₁, P₀, Int8(-1))[3]) == 14
+
+
+function get_priority_states(
+    states :: CuArray{SVector{2, SVector{10}}},
+    direction :: Int8
+    )
+
+    active_states = Set()
+    for transition in states
+        push!(target_states, transition[2])
+    end
+
+    # define priority order  
+    states_queue = PriorityQueue()
+    for state in target_states
+        enqueue!(states_queue, state, 0)
+    end
+    
+    states_count = length(states_queue)
+    priority_states = []
+    for i in 1:min(states_count, state_limit)
+        push!(priority_states, dequeue!(states_queue))
+    end
+
+    return priority_states
+end
+
+# unit tests
+
+
+active_player_for_turn(turn) = Int8((turn % 2)*2 - 1)
+
+# unit tests
+active_player_for_turn(2) isa Int8
+active_player_for_turn(1) == 1
+active_player_for_turn(2) == -1
+
+root_directory = "A:/Projects/chinese-checkers/"
+filename = "states.jld"
+
+# state_transitions = load(turn_directory * filename)["transitions"]
+start_turn = 4
+end_turn   = 7
+turn_directory = root_directory * "turn=" * string(start_turn) * "/"
+if start_turn == 1
+    transitions = [get_position_transitions(P₀, P₁, Int8(1))]
+    mkpath(turn_directory)
+    save(turn_directory * filename, "transitions", transitions)
+else
+    transitions = load(turn_directory * filename)["transitions"]
+end
+
+for turn in start_turn:end_turn-1
+    next_states = []
+    for transition in transitions
+        next_states = vcat(
+            next_states,
+            map(
+                position -> [
+                    transition[2], 
+                    position
+                ],
+                transition[3]
+            )
+        )
+    end
+
+    print(length(next_states))
+    print("\n")
+
+    transitions = map(
+        state -> get_position_transitions(
+            state[1],
+            state[2],
+            active_player_for_turn(turn+1)
+        ),
+        next_states
+    )
+
+    turn_directory = root_directory * "turn=" * string(turn+1) * "/"
+    mkpath(turn_directory)
+    save(turn_directory * filename, "transitions", transitions)
+end
+
+
+
+
+
+get_next_positions(P₀)
+get_position_transitions(P₀, P₁, Int8(1))
+
+
+
+
+
+
+
+
+
+
+
+
+S₀ = SVector(Q₀ ,Q₁)
+position_transitions = get_position_transitions(S₀[1], S₀[2], Int8(1))
+next_positions = CuArray(position_transitions[3])
+
+
+
+
+
+turn_transitions = vcat()
+for i in 2:3
+    print(len(next_positions))
+    print("\n")
+    turn_transitions = position_transitions
+    
+    position_transitions =  get_position_transitions
+    
+
+    position_transitions = get_position_transitions(S₀[1], S₀[2], Int8(1))
+
+
+
+
+function first_order_binary_functions(
+    x :: Int8, 
+    y :: Int8, 
+    a₀₀ :: Float16,
+    a₀₁ :: Float16,
+    a₁₀ :: Float16,
+    a₁₁ :: Float16
+    )
+    return a₀₀ + a₀₁*x + a₁₀*y + a₁₁*x*y
+end
+
+
+
+# unordered arguements can only be mapped with symetric functions
+# f(x, y) = f(y, x)
+# f(x, y, z) = f(x, z, y) = f(y, x, z) = f(y, z, x) = f(z, x, y) = f(z, y, x)
+function first_order_symetric_functions(
+    x₁ :: Int8,
+    x₂ :: Int8,
+    x₃ :: Int8,
+    x₄ :: Int8,
+    x₅ :: Int8,
+    x₆ :: Int8,
+    x₇ :: Int8,
+    x₈ :: Int8,
+    x₉ :: Int8,
+    x₁₀ :: Int8,
+    )
+
+end
+
+
 
 struct turn_transition
     P₀ :: Array
@@ -295,7 +531,6 @@ function get_priority_transitions(state_transitions :: Array, active_player :: B
     return priority_states
 end
 
-active_player_for_turn(turn) = 2 - (turn % 2)
 
 # unit tests
 active_player_for_turn(1) == 1
@@ -349,8 +584,9 @@ function main(start_turn :: Int8 = 1, end_turn :: Int8 = 3)
         active_player = swap_player(active_player)
     end
 end
-Int8(1) :: Int8
-main(1)
+
+
+
 
 
 
