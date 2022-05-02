@@ -7,7 +7,7 @@ using CUDA
 
 CUDA.allowscalar(false) 
 
-# point : pᵢ ∈ [0,9]
+# point : pᵢ ∈ [1,9]
 is_point_in_bounds(point :: Int8) = (point ≥ Int8(1)) & (point ≤ Int8(9))
 
 # unit tests : pᵢ
@@ -15,7 +15,7 @@ is_point_in_bounds(Int8(-10)) == false
 is_point_in_bounds(Int8(5)) == true
 is_point_in_bounds(Int8(10)) == false
 
-# position : p ∈ [0,9]²
+# position : p ∈ [1,9]²
 function is_position_in_bounds(position :: SVector{2, Int8}) 
     return is_point_in_bounds(position[1]) & is_point_in_bounds(position[2])
 end

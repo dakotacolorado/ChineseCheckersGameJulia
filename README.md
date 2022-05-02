@@ -12,3 +12,10 @@ The Game model contains the following stages:
     - Brute force the game state space to determine a naive set of game solutions.
  - Train the First-Order Model 
  - Iterate
+
+ # Testing 
+
+ `
+   using Pkg
+   Pkg.test("ChineseCheckers")
+`
