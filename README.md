@@ -15,6 +15,14 @@ The Game model contains the following stages:
 
  # Testing 
 
+Under Package mode enter:
+
+`
+activate .
+`
+
+Then in the Julia REPL enter the following:
+
  `
    using Pkg
    Pkg.test("ChineseCheckers")
