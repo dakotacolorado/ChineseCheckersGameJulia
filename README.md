@@ -3,7 +3,7 @@
 ### Overview
 Julia package that provides:
  - A **rule engine** for Chinese Checkers 
- - A **game model** with different bots to play Chinese checkers.
+ - A **game model** with different bots to play Chinese Checkers.
 
 ### **Rule Engine**
 The rule engine contains functions to determine:
