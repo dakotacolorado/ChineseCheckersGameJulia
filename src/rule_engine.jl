@@ -1,109 +1,94 @@
-using StaticArrays
-using Base.Iterators
+# p1 start positions : P₁₀ = {(p₁, p₂) | pᵢ ∈ [1, 9], p₁ + p₂ ≤ 5}
+p1_start_positions = map(
+    p -> map(Int8, p),
+    [ 
+        [1, 1], [1, 2], [2, 1], [3, 1], [2, 2],
+        [1, 3], [4, 1], [3, 2], [2, 3], [1, 4]
+    ]
+)
 
-# diagonal projection : p₁ + p₂
-function diagonal_projection(
-    position :: SVector{2, Int8}
-    ) 
-    return position[1] + position[2]
-end
+# p2 start positions : P₂₀ = {(p₁, p₂) | pᵢ ∈ [1, 9], p₁ + p₂ ≥ 13}
+p2_start_positions = map(
+    p -> map(q -> Int8(10 - q), p), 
+    p1_start_positions
+)
 
-# perpendicular projection : p₁ - p₂
-function perpendicular_projection(
-    position :: SVector{2, Int8}
-    ) 
-    return position[1] - position[2]
-end 
+p1_target_positions = copy(p2_start_positions)
+p2_target_positions = copy(p1_start_positions)
 
-# point : pᵢ ∈ [1,9]
+# game state : Sₜ = P₁ₜ ∪ P₂ₜ
+start_game_state = vcat(p1_start_positions, p2_start_positions)
+
+# unit moves : Ω = {(m₁, m₂) | mᵢ ∈ {-1, 0, 1}, m₁ + m₂ ≤ 2}
+unit_moves = map(
+    m -> map(Int8, m),
+    [ [1,0], [-1, 0], [0, 1], [0, -1], [-1, 1], [1, -1] ]
+)
+
+# start turn : t ∈ ℤ 
+start_turn = Int8(1)
+
+# is point in bounds : pᵢ ∈ [1,9]
 function is_point_in_bounds(
     point :: Int8
     ) 
     return (point ≥ Int8(1)) & (point ≤ Int8(9))
 end
 
-# position : p ∈ [1,9]²
+# is position in bounds : p ∈ [1,9]²
 function is_position_in_bounds(
-    position :: SVector{2, Int8}
+    position :: Vector{Int8}
     ) 
     return is_point_in_bounds(position[1]) & is_point_in_bounds(position[2])
 end
 
-# position : p ∈ [1,9]²
-# Positions : P ∈ [0,9]²ˣ¹⁰
-# is position open : p ∉ P₀ ∪ P₁
+# is position open : p ∉ Sₜ
 function is_position_open(
-    position :: SVector{2, Int8}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+    position :: Vector{Int8}, 
+    game_state :: Vector{Vector{Int8}}
     ) 
-    return  ~ mapreduce(q -> q == position, |, Positions)
+    return  ~ mapreduce(p -> p == position, |, game_state)
 end
 
-# move : m ∈ [0,9]² 
-# direction : d ∈ {-1, 1}
-# is move forward : (v₁ + v₂) ⋅ d ≥ 0
-function is_move_forward(
-    move :: SVector{2, Int8}, 
-    direction :: Int8
-    ) 
-    return diagonal_projection(move) * direction ≥ 0
-end
-
-# position : p ∈ [0,9]² 
-# Positions : P ∈ [0,9]²ˣ¹⁰
-# is position valid : (p ∈ [0,9]²) & (p ∉ P₀ ∪ P₁) 
+# is position valid : (p ∈ [0,9]²) & (p ∉ Sₜ) 
 function is_position_valid(
-    position ::SVector{2, Int8}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+    position ::Vector{Int8}, 
+    game_state :: Vector{Vector{Int8}}
     ) 
     is_valid =  is_position_in_bounds(position)
-    is_valid &= is_position_open(position, Positions)
+    is_valid &= is_position_open(position, game_state)
     return is_valid
 end
 
-# unit moves : Ω = {(m₁, m₂) | mᵢ ∈ {-1, 0, 1}, m₁ + m₂ ≤ 2}
-unit_moves = SVector{6}(map(
-    m -> SVector{2}(Int8(m[1]), Int8(m[2])),
-    [ 
-        [1 0], [-1 0], [0 1], [0 -1], [-1 1], [1 -1]
-    ]
-))
-
-# position : p ∈ [0,9]² 
-# Positions : P ∈ [0,9]²ˣ¹⁰
 # get unit moves : {ω | ω ∈ Ω, p + ω ∉ P, p + ω ∈ [0,9]²}
 function get_unit_moves(
-    position :: SVector{2, Int8}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+    position :: Vector{Int8}, 
+    game_state :: Vector{Vector{Int8}}
     ) 
     return filter(
-        move -> is_position_valid(position + move, Positions), 
+        move -> is_position_valid(position + move, game_state), 
         unit_moves
     )
 end
 
-# position : p ∈ [0,9]² 
-# move : m ∈ [0,9]²
-# Positions : P ∈ [0,9]²ˣ¹⁰
 # is double move open : (p + m ∈ P) & (p + 2*m ∉ P) & (p + 2*m ∈ [0,9]²)
 function is_double_move_open(
-    position :: SVector{2, Int8}, 
-    move :: SVector{2, Int8}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+    position :: Vector{Int8}, 
+    move :: Vector{Int8}, 
+    game_state :: Vector{Vector{Int8}}
     ) 
-    is_open = ~is_position_open(position + move, Positions)
-    is_open &= is_position_valid(map(Int8, position + 2*move), Positions)
+    is_open = ~is_position_open(position + move, game_state)
+    is_open &= is_position_valid(map(Int8, position + 2*move), game_state)
     return is_open
 end
 
-# position : p ∈ [0,9]² 
-# Positions : P ∈ [0,9]²ˣ¹⁰
+# get double moves : 
 function get_double_moves(
-    position :: SVector{2, Int8}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+    position :: Vector{Int8}, 
+    Positions :: Vector{Vector{Int8}}
     ) 
-    visited_moves = Set{SVector{2, Int8}}()
-    moves_queue   = Array{SVector{2, Int8}}([SVector(Int8(0), Int8(0))])
+    visited_moves = Set{Vector{Int8}}()
+    moves_queue   = Vector{Vector{Int8}}([[Int8(0), Int8(0)]])
    
     while length(moves_queue) > 0
         next_moves = map( 
@@ -127,39 +112,88 @@ function get_double_moves(
     return collect(visited_moves)
 end
 
-# new_position : p ∈ [0,9]² 
-# index : i ∈ [0,9]
-# Positions : P ∈ [0,9]²ˣ¹⁰
-function replace_position(
-    new_position :: SVector{2, Int8},
-    index :: Int8, 
-    Positions :: SVector{10, SVector{2, Int8}}
+# get player for turn : (1 + t) % 2 + 1
+function get_player_for_turn(
+    turn :: Int8
     )
-    return SVector{10}(map(
-        ((j, position), ) -> j == index ? new_position : position, 
-        enumerate(Positions)
-    ))
+    return Int8((1 + turn) % 2 + 1)
 end
 
-# active Positions : R ∈ [0,9]²ˣ¹⁰
-# Positions : R ∈ [0,9]²ˣ²⁰
-# direction : d ∈ {-1, 1}
-function get_next_positions(
-    active_Positions :: SVector{10, SVector{2, Int8}}, 
-    Positions :: SVector{20, SVector{2, Int8}}
+# get positions for player : 
+function get_postitions_for_player(
+    player :: Int8,
+    game_state :: Vector{Vector{Int8}}
     )
-    return collect(
-        Iterators.flatten(
-            map(
-                ((i, position), ) -> map(
-                    move -> replace_position(active_Positions, Int8(i), position + move), 
-                    vcat(
-                        get_unit_moves(position, Positions), 
-                        get_double_moves(position, Positions))
-                    ), 
-                enumerate(active_Positions)
+    return player == 1 ? game_state[1:10] : game_state[11:20]
+end
+
+# get next moves : 
+function get_next_moves(
+    turn :: Int8,
+    game_state :: Vector{Vector{Int8}}
+    )
+    player = get_player_for_turn(turn)
+    positions = get_postitions_for_player(player, game_state)
+    next_moves = map(
+        position -> map(
+            move -> [position, position + move], 
+            vcat(
+                get_unit_moves(position, game_state), 
+                get_double_moves(position, game_state)
             )
-        )
+        ), 
+        positions
+    )
+    next_moves = collect(Iterators.flatten(next_moves))
+    return next_moves
+end
+
+# update game state : 
+function update_game_state(
+    move :: Vector{Vector{Int8}},
+    game_state :: Vector{Vector{Int8}}
+    )
+    return map(
+        position -> position == move[1] ? move[2] : position,
+        game_state
     )
 end
 
+# get next game states : 
+function get_next_game_states(
+    turn :: Int8,
+    game_state :: Vector{Vector{Int8}}
+    )
+    next_moves = get_next_moves(turn, game_state)
+    return map(
+        move -> update_game_state(move, game_state),
+        next_moves
+    )
+end
+
+# is game won 
+function is_game_won(
+    turn :: Int8,
+    game_state :: Vector{Vector{Int8}}
+    )
+    player = get_player_for_turn(turn)
+    
+    p1_positions = get_postitions_for_player(Int8(1), game_state)
+    p2_positions = get_postitions_for_player(Int8(2), game_state)
+    
+    if player == 1
+        if p1_positions == p1_target_positions
+            if p2_positions == p2_target_positions
+                return "tie"
+            else
+                return "player 1 won"
+            end
+        elseif p2_positions == p2_target_positions
+            return "player 2 won"
+        else
+            return false
+        end
+    else
+        return false
+    end
+end
