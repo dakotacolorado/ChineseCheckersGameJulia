@@ -1,19 +1,21 @@
-# Chinese Checkers Bot
-## Overview
-This project is to build an AI to play Chinese checkers.
-## Game Utilites
-Game utilities contains functions to determine:
+# Chinese Checkers Game
+## Package Contents
+### Overview
+Julia package that provides:
+ - A **rule engine** for Chinese Checkers 
+ - A **game model** with different bots to play Chinese checkers.
+
+### **Rule Engine**
+The rule engine contains functions to determine:
  - Next Posible Turns
  - Winning Positions
 
-## Game Model
-The Game model contains the following stages:
- - Naive Training Model
-    - Brute force the game state space to determine a naive set of game solutions.
- - Train the First-Order Model 
- - Iterate
+### **Game Model**
+The game model contains functions to model the game and train bots.
 
- # Testing 
+---
+
+## Testing 
 
 Under Package mode enter:
 
@@ -23,7 +25,7 @@ activate .
 
 Then in the Julia REPL enter the following:
 
- `
+```
    using Pkg
    Pkg.test("ChineseCheckers")
-`
+```
