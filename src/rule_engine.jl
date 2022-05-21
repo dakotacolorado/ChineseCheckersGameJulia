@@ -2,7 +2,7 @@
 p1_start_positions = map(
     p -> map(Int8, p),
     [ 
-        [1, 1], [1, 2], [2, 1], [3, 1], [2, 2],
+        [1, 1], [2, 1], [1, 2], [3, 1], [2, 2],
         [1, 3], [4, 1], [3, 2], [2, 3], [1, 4]
     ]
 )
@@ -111,7 +111,7 @@ function get_double_moves(
     end
     return collect(visited_moves)
 end
-
+# [0,9]¹⁰ˣ²ˣ² ↦ ℝ
 # get player for turn : (1 + t) % 2 + 1
 function get_player_for_turn(
     turn :: Int8
