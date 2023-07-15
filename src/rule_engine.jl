@@ -1,3 +1,5 @@
+using StatsPlots
+
 # p1 start positions : P₁₀ = {(p₁, p₂) | pᵢ ∈ [1, 9], p₁ + p₂ ≤ 5}
 p1_start_positions = map(
     p -> map(Int8, p),
@@ -26,7 +28,7 @@ unit_moves = map(
 )
 
 # start turn : t ∈ ℤ 
-start_turn = Int8(1)
+start_turn = Int16(1)
 
 # is point in bounds : pᵢ ∈ [1,9]
 function is_point_in_bounds(
@@ -114,7 +116,7 @@ end
 # [0,9]¹⁰ˣ²ˣ² ↦ ℝ
 # get player for turn : (1 + t) % 2 + 1
 function get_player_for_turn(
-    turn :: Int8
+    turn :: Int16
     )
     return Int8((1 + turn) % 2 + 1)
 end
@@ -129,7 +131,7 @@ end
 
 # get next moves : 
 function get_next_moves(
-    turn :: Int8,
+    turn :: Int16,
     game_state :: Vector{Vector{Int8}}
     )
     player = get_player_for_turn(turn)
@@ -161,7 +163,7 @@ end
 
 # get next game states : 
 function get_next_game_states(
-    turn :: Int8,
+    turn :: Int16,
     game_state :: Vector{Vector{Int8}}
     )
     next_moves = get_next_moves(turn, game_state)
@@ -173,22 +175,22 @@ end
 
 # is game won 
 function is_game_won(
-    turn :: Int8,
+    turn :: Int16,
     game_state :: Vector{Vector{Int8}}
     )
     player = get_player_for_turn(turn)
     
-    p1_positions = get_postitions_for_player(Int8(1), game_state)
-    p2_positions = get_postitions_for_player(Int8(2), game_state)
+    p1_positions = Set(get_postitions_for_player(Int8(1), game_state))
+    p2_positions = Set(get_postitions_for_player(Int8(2), game_state))
     
     if player == 1
-        if p1_positions == p1_target_positions
-            if p2_positions == p2_target_positions
+        if p1_positions == Set(p1_target_positions)
+            if p2_positions == Set(p2_target_positions)
                 return "tie"
             else
                 return "player 1 won"
             end
-        elseif p2_positions == p2_target_positions
+        elseif p2_positions == Set(p2_target_positions)
             return "player 2 won"
         else
             return false
@@ -197,3 +199,19 @@ function is_game_won(
         return false
     end
 end
+
+function print_game_state(
+    game_state :: Vector{Vector{Int8}}
+    )
+    player_1 = get_postitions_for_player(Int8(1), game_state)
+    player_2 = get_postitions_for_player(Int8(2), game_state)
+    board = zeros(9,9)
+    for position in player_1
+        board[position[1], position[2]] = 1
+    end
+    for position in player_2
+        board[position[1], position[2]] = -1
+    end
+    heatmap(board)
+end
+# print_game_state(start_game_state)

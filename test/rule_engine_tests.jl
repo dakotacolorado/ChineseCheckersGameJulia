@@ -58,8 +58,8 @@ t3_game_state = vcat(p1_t3_positions, p2_start_positions)
 @test get_player_for_turn(Int8(4)) == 2
 
 # get positions for player 
-@test get_postitions_for_player(Int8(1), start_game_state) == p1_start_positions
-@test get_postitions_for_player(Int8(2), start_game_state) == p2_start_positions
+@test get_postitions_for_player(Int16(1), start_game_state) == p1_start_positions
+@test get_postitions_for_player(Int16(2), start_game_state) == p2_start_positions
 
 # get next moves
 @test get_next_moves(start_turn, start_game_state) == [
@@ -87,13 +87,13 @@ t3_game_state = vcat(p1_t3_positions, p2_start_positions)
 
 
 # is game won 
-@test is_game_won(Int8(1), start_game_state) == false
+@test is_game_won(Int16(1), start_game_state) == false
 tie_game_state = vcat(p2_start_positions, p1_start_positions)
-@test is_game_won(Int8(1), tie_game_state)== "tie"
+@test is_game_won(Int16(1), tie_game_state)== "tie"
 p1_win_game_state = vcat(p2_start_positions, p2_start_positions)
-@test is_game_won(Int8(1), p1_win_game_state)== "player 1 won"
+@test is_game_won(Int16(1), p1_win_game_state) == "player 1 won"
 p2_win_game_state = vcat(p1_start_positions, p1_start_positions)
-@test is_game_won(Int8(1), p2_win_game_state)== "player 2 won"
+@test is_game_won(Int16(1), p2_win_game_state)== "player 2 won"
 
 
 # get_next_game_states(start_turn, start_game_state)
